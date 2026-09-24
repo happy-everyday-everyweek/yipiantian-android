@@ -1,0 +1,127 @@
+name: Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 非空时把 APK 附加到同名 Release
+        required: false
+        default: ""
+  push:
+    branches: [ main ]
+
+env:
+  GODOT_VERSION: "4.7.2"
+  UPSTREAM: https://github.com/henjicc/yipiantian.git
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: 检出移植改动
+        uses: actions/checkout@v4
+
+      - name: 克隆上游并拉取 Git LFS 资产
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq git-lfs unzip
+          git lfs install --skip-repo
+          git clone --depth 1 "$UPSTREAM" work
+          cd work
+          git lfs pull
+          du -sh . Game ArtSource
+
+      - name: 套用移植改动
+        run: |
+          cp -a port/Game/. work/Game/
+          cd work
+          git status --short | head -40
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: 安装 Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 安装构建工具
+        run: |
+          sdkmanager --install "build-tools;35.0.0" "platform-tools" 2>&1 | tail -3
+          sdkmanager --list_installed 2>&1 | tail -10
+
+      - name: 缓存 Godot 与导出模板
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/godot
+            ~/.local/share/godot/export_templates
+          key: godot-${{ env.GODOT_VERSION }}-linux
+
+      - name: 安装 Godot ${{ env.GODOT_VERSION }}
+        run: |
+          mkdir -p ~/godot
+          if [ ! -x ~/godot/godot ]; then
+            curl -sSL -o /tmp/godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+            unzip -oq /tmp/godot.zip -d ~/godot
+            mv ~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64 ~/godot/godot
+            chmod +x ~/godot/godot
+          fi
+          ~/godot/godot --headless --version
+
+      - name: 安装 Android 导出模板
+        run: |
+          TPL="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          if [ ! -f "$TPL/android_debug.apk" ]; then
+            curl -sSL -o /tmp/templates.tpz "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+            mkdir -p "$TPL"
+            unzip -oq -j /tmp/templates.tpz 'templates/android_*' 'templates/version.txt' -d "$TPL"
+          fi
+          ls -l "$TPL"
+
+      - name: 生成调试签名与编辑器路径
+        run: |
+          mkdir -p "$HOME/.android" "$HOME/.config/godot"
+          keytool -keyalg RSA -genkeypair -alias androiddebugkey -keypass android \
+            -keystore "$HOME/.android/debug.keystore" -storepass android \
+            -dname "CN=Android Debug,O=Android,C=US" -validity 9999 -deststoretype pkcs12
+          {
+            echo '[gd_resource type="EditorSettings" format=3]'
+            echo ''
+            echo '[resource]'
+            echo "export/android/android_sdk_path = \"${ANDROID_SDK_ROOT:-$ANDROID_HOME}\""
+            echo "export/android/java_sdk_path = \"$JAVA_HOME\""
+            echo "export/android/debug_keystore = \"$HOME/.android/debug.keystore\""
+            echo 'export/android/debug_keystore_user = "androiddebugkey"'
+            echo 'export/android/debug_keystore_pass = "android"'
+          } > "$HOME/.config/godot/editor_settings-4.tres"
+          cat "$HOME/.config/godot/editor_settings-4.tres"
+
+      - name: 导入资源
+        working-directory: work
+        run: ~/godot/godot --headless --path Game --import 2>&1 | tail -25
+
+      - name: 导出调试版 APK
+        working-directory: work
+        run: |
+          mkdir -p dist
+          ~/godot/godot --headless --path Game --export-debug "Android" "$PWD/dist/Farm-android-debug.apk" 2>&1 | tail -40
+          ls -l dist
+
+      - name: 上传 APK 产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: farm-android-debug
+          path: work/dist/Farm-android-debug.apk
+          if-no-files-found: error
+
+      - name: 附加到 Release
+        if: ${{ github.event.inputs.release_tag != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.release_tag }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" --notes "由 Actions 构建"
+          gh release upload "$TAG" work/dist/Farm-android-debug.apk --clobber
