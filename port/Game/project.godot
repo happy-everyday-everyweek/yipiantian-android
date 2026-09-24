@@ -42,6 +42,8 @@ theme/custom_font="res://art/ui/fonts/汇文明朝体.ttf"
 
 renderer/rendering_method="forward_plus"
 renderer/rendering_method.mobile="mobile"
+# Android 导出要求 ETC2/ASTC；手机端也靠它把纹理带宽压下来。
+textures/vram_compression/import_etc2_astc=true
 lights_and_shadows/directional_shadow/size=4096
 lights_and_shadows/positional_shadow/atlas_size=2048
 lights_and_shadows/directional_shadow/soft_shadow_filter_quality=3
