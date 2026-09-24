@@ -145,6 +145,7 @@ func _prepare_stores() -> bool:
 
 func _ready() -> void:
 	if not _startup_admitted: return
+	Engine.set_meta("boot_stage", "开始构建界面")
 	get_tree().auto_accept_quit = false
 	get_window().min_size = Vector2i(960, 600)
 	hud = HUD.new()
@@ -277,7 +278,9 @@ func _ready() -> void:
 	# 临时：手机 debug 包的屏幕性能读数，调完档位删除。
 	if mobile_profile.is_mobile() and OS.is_debug_build():
 		add_child(preload("res://platform/mobile_perf_overlay.gd").new())
+	Engine.set_meta("boot_stage", "画质与触摸已就绪")
 	_setup_settings()
+	Engine.set_meta("boot_stage", "设置已载入")
 	desktop_wallpaper = DesktopWallpaper.new()
 	desktop_wallpaper.name = "DesktopWallpaper"
 	add_child(desktop_wallpaper)
@@ -330,12 +333,14 @@ func _ready() -> void:
 		recording.session_dir = _record_session
 		recording.farm_scene = self
 		add_child(recording)
+	Engine.set_meta("boot_stage", "启动完成")
 
 
 func _load_game(initial: Dictionary = {}) -> void:
 	var result: Dictionary = store.load_state() if initial.is_empty() else initial
 	if not result.ok:
 		_loaded = false
+		Engine.set_meta("boot_stage", "存档读取失败：" + str(result.kind))
 		farm.visible = false
 		trellis_crops.visible=false
 		hud.show_storage_issue(result.kind, false)

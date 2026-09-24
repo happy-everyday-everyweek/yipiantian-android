@@ -122,10 +122,9 @@ jobs:
           if-no-files-found: error
 
       - name: 附加到 Release
-        if: ${{ github.event.inputs.release_tag != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event.inputs.release_tag }}
+          TAG: ${{ github.event.inputs.release_tag || 'android-latest' }}
         run: |
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" --notes "由 Actions 构建"
           gh release upload "$TAG" work/dist/Farm-android-debug.apk --clobber

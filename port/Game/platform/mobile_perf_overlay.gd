@@ -37,11 +37,17 @@ func _process(delta: float) -> void:
 
 
 func _update_text() -> void:
-	_label.text = "FPS %.0f  最低 %.0f\n绘制 %d  顶点 %.1fM\n显存 %.0f MB  物理 %.2f ms" % [
+	var stage: String = str(Engine.get_meta("boot_stage", "未记录"))
+	var backend: String = "Vulkan" if RenderingServer.get_rendering_device() != null else "OpenGL"
+	_label.text = "FPS %.0f  最低 %.0f\n绘制 %d  顶点 %.1fM\n显存 %.0f MB  物理 %.2f ms\n启动阶段 %s\n%s / %s\n窗口 %s" % [
 		_fps,
 		_low,
 		int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)),
 		Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME) / 1000000.0,
 		Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0,
 		Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0,
+		stage,
+		backend,
+		RenderingServer.get_video_adapter_name(),
+		str(get_viewport().get_visible_rect().size),
 	]
