@@ -27,8 +27,11 @@ func apply(viewport: Viewport) -> void:
 	# MSAA 在移动 GPU 上是纯带宽开销，边缘交给 FXAA。
 	viewport.msaa_3d = Viewport.MSAA_DISABLED
 	viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA
-	# 非原生分辨率下用 FSR 上采样，成本接近双线性但明显更清晰。
-	viewport.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR
+	# 非原生分辨率下用 FSR 上采样；FSR 只在 Vulkan 后端可用，OpenGL 退回双线性。
+	if RenderingServer.get_rendering_device() != null:
+		viewport.scaling_3d_mode = Viewport.SCALING_3D_MODE_FSR
+	else:
+		viewport.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
 	# 手机没有稳定的"窗口失焦"状态，前台帧率仍由 window_activity 收放。
 	Engine.max_fps = 60
 	DisplayServer.screen_set_keep_on(true)

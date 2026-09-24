@@ -41,7 +41,7 @@ theme/custom_font="res://art/ui/fonts/汇文明朝体.ttf"
 [rendering]
 
 renderer/rendering_method="forward_plus"
-renderer/rendering_method.mobile="mobile"
+renderer/rendering_method.mobile="gl_compatibility"
 ; Android 导出要求 ETC2/ASTC；手机端也靠它把纹理带宽压下来。
 textures/vram_compression/import_etc2_astc=true
 lights_and_shadows/directional_shadow/size=4096
@@ -69,3 +69,9 @@ courtyard_haze_color={
 "type": "color",
 "value": Color(0.72, 0.72, 0.65, 1)
 }
+
+[debug]
+
+; 手机端也写日志文件（user://logs/godot.log），方便排查启动问题。
+file_logging/enable_file_logging=true
+file_logging/enable_file_logging.mobile=true
