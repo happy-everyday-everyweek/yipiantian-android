@@ -5,9 +5,16 @@ extends RefCounted
 ## 默认渲染分辨率。取景相关的后处理档位归 focus_detail，渲染倍率归 main.gd 的
 ## _apply_render_resolution，帧率预算仍归 window_activity。
 
-## 手机默认 1080 渲染再上采样：1260 高的屏幕约 0.86 倍，移动 GPU 收益最直接；
-## 用户在设置里仍可切原生（更清晰）或 720p（更省电）。
-const DEFAULT_RESOLUTION: String = "1080"
+## 手机默认 720p 渲染再上采样：这台设备约 0.62 倍分辨率，顶点与填充压力一起下降；
+## 用户在设置里仍可切原生或 1080p 折中。
+const DEFAULT_RESOLUTION: String = "720"
+## 桌面用"输出高度"表达分辨率；手机屏幕纵向像素远多于桌面窗口，按高度换算会接近 1 倍，
+## 所以手机直接给 3D 渲染倍率：720p≈0.62、1080p≈0.85、原生及以上=1.0。
+const RENDER_SCALE: Dictionary = {"native": 1.0, "720": 0.62, "1080": 0.85, "1440": 1.0, "2160": 1.0}
+
+
+func render_scale(choice: String) -> float:
+	return RENDER_SCALE.get(choice, 0.85)
 
 func is_mobile() -> bool:
 	return OS.has_feature("mobile")
@@ -33,5 +40,5 @@ func apply(viewport: Viewport) -> void:
 	else:
 		viewport.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
 	# 手机没有稳定的"窗口失焦"状态，前台帧率仍由 window_activity 收放。
-	Engine.max_fps = 60
+	Engine.max_fps = 45
 	DisplayServer.screen_set_keep_on(true)

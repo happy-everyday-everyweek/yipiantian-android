@@ -7,6 +7,9 @@ const FOCUS_BIAS: float = 2.0
 # Zero forces the coarsest generated LOD even at close range. Preserve Godot's
 # screen-space selection everywhere; selected crops get a modest quality margin.
 const OVERVIEW_BIAS: float = 1.0
+## 手机端整体下调 LOD 偏置：这台设备每帧顶点数是首要瓶颈，远景改用更粗的 LOD。
+const MOBILE_FOCUS_BIAS: float = 0.0
+const MOBILE_OVERVIEW_BIAS: float = -0.6
 const CameraForeground = preload("res://presentation/camera_foreground.gd")
 const PlantWind = preload("res://presentation/plant_wind.gd")
 const IndirectLighting = preload("res://presentation/indirect_lighting.gd")
@@ -22,6 +25,9 @@ var _fields: Array = []
 var _environment: Node3D
 var _decorations: Node3D
 var _quality: String = "standard"
+## 当前生效的 LOD 偏置；手机端会在 _apply_quality 里下调。
+var _bias_focus: float = FOCUS_BIAS
+var _bias_overview: float = OVERVIEW_BIAS
 ## 手机端在同一个档位语义下再降一档代价：见 _apply_quality 与 _dof_cost_allowed。
 var _mobile: bool = OS.has_feature("mobile")
 var _dof_enabled: bool = true
@@ -127,8 +133,10 @@ func get_settings() -> Dictionary:
 
 func _apply_quality() -> void:
 	_environment.get_node("PlayerPlants").set_low_detail(_quality=="low")
-	_environment.get_node("NeighborIslets").set_low_detail_enabled(_quality == "low")
-	_environment.get_node("LivingDetails").set_lamp_shadows(_quality != "low")
+	# 对岸岛屿只是背景，手机端一律用低细节，省下大量顶点。
+	_environment.get_node("NeighborIslets").set_low_detail_enabled(_quality == "low" or _mobile)
+	# 灯具阴影是额外的点光源贴图，手机端只在"高画质"保留。
+	_environment.get_node("LivingDetails").set_lamp_shadows(_quality != "low" and (not _mobile or _quality == "high"))
 	# Preserve the foreground composition. High remains an explicit costlier choice.
 	var high: bool = _quality == "high"
 	var low: bool = _quality == "low"
@@ -142,6 +150,8 @@ func _apply_quality() -> void:
 		msaa = Viewport.MSAA_DISABLED
 		positional_atlas = 2048 if high else (512 if low else 1024)
 		directional_atlas = 2048 if high else 1024
+		_bias_focus = MOBILE_FOCUS_BIAS
+		_bias_overview = MOBILE_OVERVIEW_BIAS
 	_camera.get_viewport().msaa_3d = msaa
 	_camera.get_viewport().positional_shadow_atlas_size = positional_atlas
 	RenderingServer.directional_shadow_atlas_set_size(directional_atlas, false)
@@ -155,6 +165,10 @@ func _apply_quality() -> void:
 		if _mobile:
 			# 全屏屏幕空间遮蔽在移动 GPU 上换不回对得起的帧率，手机端整体停用。
 			world_environment.ssao_enabled = false
+			# OpenGL 后端没有 HDR 缓冲，AgX + glow 的 1.35 阈值基本失效，
+			# 接近白色的石板、石桥会被整片泛光烧白，这里直接停用。
+			if RenderingServer.get_rendering_device() == null:
+				world_environment.glow_enabled = false
 	_indirect_lighting.set_enabled(_quality == "high" and not _mobile)
 
 
@@ -165,11 +179,11 @@ func _dof_cost_allowed() -> bool:
 func refresh_field(field: Node3D) -> void:
 	# Changing an instance's bias keeps its imported mesh, material and collision.
 	# Scene-child notifications cover stage replacement; no per-frame tree traversal.
-	_set_bias(field.get_node("Crops"), FOCUS_BIAS if field == _target else OVERVIEW_BIAS)
+	_set_bias(field.get_node("Crops"), _bias_focus if field == _target else _bias_overview)
 
 
 func refresh_decorations() -> void:
-	_set_bias(_decorations, OVERVIEW_BIAS)
+	_set_bias(_decorations, _bias_overview)
 	for child: Node in _decorations.get_children():
 		_apply_decoration_wind(child)
 
@@ -177,7 +191,7 @@ func refresh_decorations() -> void:
 func refresh_details() -> void:
 	for field: Node3D in _fields:
 		refresh_field(field)
-	_set_bias(_environment, OVERVIEW_BIAS)
+	_set_bias(_environment, _bias_overview)
 	refresh_decorations()
 
 
@@ -189,7 +203,7 @@ func _set_bias(node: Node, value: float) -> void:
 
 
 func _on_crop_added(node: Node, field: Node3D) -> void:
-	_set_bias(node, FOCUS_BIAS if field == _target else OVERVIEW_BIAS)
+	_set_bias(node, _bias_focus if field == _target else _bias_overview)
 	_bounds_dirty = true
 
 
@@ -228,7 +242,7 @@ func protected_depth_range() -> Vector2:
 
 func _on_decoration_added(node: Node) -> void:
 	# Includes new confirmed, recovered and preview instances, without touching state.
-	_set_bias(node, OVERVIEW_BIAS)
+	_set_bias(node, _bias_overview)
 	_apply_decoration_wind(node)
 
 

@@ -1873,6 +1873,9 @@ func _apply_render_resolution() -> void:
 	var choice: String = settings_values.resolution
 	# Never lower UI resolution or change the display's video mode for 3D quality.
 	var scale_3d: float = 1.0 if choice == "native" else clampf(float(choice) / maxf(output.y, 1), .25, 1.0)
+	if mobile_profile != null and mobile_profile.is_mobile():
+		# 手机屏幕纵向像素远多于桌面窗口，按输出高度换算会得到接近 1 的倍率，改用固定倍率表。
+		scale_3d = mobile_profile.render_scale(choice)
 	if not is_equal_approx(get_viewport().scaling_3d_scale, scale_3d):
 		get_viewport().scaling_3d_scale = scale_3d
 
