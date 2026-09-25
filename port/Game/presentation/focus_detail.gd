@@ -169,6 +169,8 @@ func _apply_quality() -> void:
 			# 接近白色的石板、石桥会被整片泛光烧白，这里直接停用。
 			if RenderingServer.get_rendering_device() == null:
 				world_environment.glow_enabled = false
+				# LDR 缓冲里 AgX 配 1.30 曝光同样会把浅色石板推到 1.0 烧白，先回到 1.0。
+				world_environment.tonemap_exposure = 1.0
 	_indirect_lighting.set_enabled(_quality == "high" and not _mobile)
 
 
