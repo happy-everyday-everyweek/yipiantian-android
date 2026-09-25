@@ -87,9 +87,8 @@ jobs:
       - name: 生成调试签名与编辑器路径
         run: |
           mkdir -p "$HOME/.android" "$HOME/.config/godot"
-          keytool -keyalg RSA -genkeypair -alias androiddebugkey -keypass android \
-            -keystore "$HOME/.android/debug.keystore" -storepass android \
-            -dname "CN=Android Debug,O=Android,C=US" -validity 9999 -deststoretype pkcs12
+          # 固定调试密钥，仓库里带一份，保证每次构建签名一致，可以直接覆盖安装。
+          cp ci/debug.keystore "$HOME/.android/debug.keystore"
           {
             echo '[gd_resource type="EditorSettings" format=3]'
             echo ''
