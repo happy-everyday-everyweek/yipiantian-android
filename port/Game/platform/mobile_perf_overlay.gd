@@ -10,6 +10,12 @@ extends CanvasLayer
 const SAMPLE_SECONDS: float = 1.0
 const PORT: int = 8791
 const LOG_TAIL_LINES: int = 500
+## 日志与状态的外置镜像目录（Write 分享用）。需要用户授予「所有文件访问」，
+## 未授权时写入失败，会自动退回只保留 user:// 内的引擎日志。
+const EXPORT_DIR: String = "/storage/emulated/0/Download/yipiantian/logs"
+const EXPORT_LOG: String = EXPORT_DIR + "/godot.log"
+const EXPORT_STATE: String = EXPORT_DIR + "/state.txt"
+const MIRROR_SECONDS: float = 1.5
 const RENDER_SCALES: Array = [0.5, 0.62, 0.85, 1.0]
 const EXPOSURES: Array = [0.9, 1.0, 1.15, 1.3]
 
@@ -23,6 +29,8 @@ var _server: TCPServer
 var _clients: Array[StreamPeerTCP] = []
 var _frames: int = 0
 var _elapsed: float = 0.0
+var _mirror_elapsed: float = 0.0
+var _export_ok: bool = false
 var _fps: float = 0.0
 var _low: float = 0.0
 
@@ -132,6 +140,10 @@ func _process(delta: float) -> void:
 	_serve_clients()
 	_frames += 1
 	_elapsed += delta
+	_mirror_elapsed += delta
+	if _mirror_elapsed >= MIRROR_SECONDS:
+		_mirror_elapsed = 0.0
+		_mirror_exports()
 	if _elapsed >= SAMPLE_SECONDS:
 		var sample: float = float(_frames) / _elapsed
 		_fps = sample if _fps <= 0.0 else lerpf(_fps, sample, .5)
@@ -191,14 +203,33 @@ func _log_tail() -> String:
 	return "\n".join(lines)
 
 
+func _mirror_exports() -> void:
+	# 引擎日志与状态镜像到 Download，方便直接查看和分享；没授权时写入失败并自我记录。
+	if not DirAccess.dir_exists_absolute(EXPORT_DIR):
+		DirAccess.make_dir_recursive_absolute(EXPORT_DIR)
+	_write_text(EXPORT_LOG, _log_tail())
+	_write_text(EXPORT_STATE, _state_text())
+
+
+func _write_text(path: String, text: String) -> void:
+	var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
+	if file == null:
+		_export_ok = false
+		return
+	file.store_string(text)
+	file.close()
+	_export_ok = true
+
+
 func _state_text() -> String:
-	return "fps=%.1f low=%.1f cpu_ms=%.1f draws=%d verts=%.1fM vmem=%.0fMB\nscale=%.2f exposure=%.2f backend=%s gpu=%s\nshadows=%s water=%s islets=%s plants=%s glow=%s" % [
+	return "fps=%.1f low=%.1f cpu_ms=%.1f draws=%d verts=%.1fM vmem=%.0fMB\nexport=%s\nscale=%.2f exposure=%.2f backend=%s gpu=%s\nshadows=%s water=%s islets=%s plants=%s glow=%s" % [
 		_fps,
 		_low,
 		Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0,
 		int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)),
 		Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME) / 1000000.0,
 		Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0,
+		str(_export_ok),
 		get_viewport().scaling_3d_scale,
 		_environment.tonemap_exposure if _environment != null else 0.0,
 		"Vulkan" if RenderingServer.get_rendering_device() != null else "OpenGL",
@@ -259,7 +290,7 @@ func _apply_command(path: String) -> String:
 func _update_text() -> void:
 	var stage: String = str(Engine.get_meta("boot_stage", "未记录"))
 	var backend: String = "Vulkan" if RenderingServer.get_rendering_device() != null else "OpenGL"
-	_label.text = "FPS %.0f  最低 %.0f  CPU %.1f ms\n绘制 %d  顶点 %.1fM  显存 %.0f MB\n启动 %s\n%s / %s  端口 %d\n倍率 %.2f  曝光 %.2f  窗口 %s" % [
+	_label.text = "FPS %.0f  最低 %.0f  CPU %.1f ms\n绘制 %d  顶点 %.1fM  显存 %.0f MB\n启动 %s\n%s / %s  端口 %d  外写 %s\n倍率 %.2f  曝光 %.2f  窗口 %s" % [
 		_fps,
 		_low,
 		Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0,
@@ -270,6 +301,7 @@ func _update_text() -> void:
 		backend,
 		RenderingServer.get_video_adapter_name(),
 		PORT,
+		str(_export_ok),
 		get_viewport().scaling_3d_scale,
 		_environment.tonemap_exposure if _environment != null else 0.0,
 		str(get_viewport().get_visible_rect().size),
